@@ -12,6 +12,8 @@ Save (--dl):
   ./bilibili_watcher.py URL --dl -s 1:30 -e 2:45 -o clip
   ./bilibili_watcher.py URL --dl -d ~/Videos
   ./bilibili_watcher.py URL --dl -s 1:30 -e 2:45 --precise   # frame-accurate cut (re-encode)
+  ./bilibili_watcher.py URL --dl --audio-only       # <title>.m4a
+  ./bilibili_watcher.py URL --dl --video-only       # <title>.mp4 without audio
 
 Common:
   --sessdata XXXX   login cookie for higher quality (or env BILI_SESSDATA)
@@ -180,15 +182,21 @@ def fetch(urls, path):
 def download(info, a):
     if not shutil.which("ffmpeg"):
         sys.exit("ffmpeg not found")
+    want_v = not a.audio_only
+    want_a = not a.video_only and info["audio"] is not None
+    if a.audio_only and not info["audio"]:
+        sys.exit("This video has no audio stream")
+    ext = ".m4a" if a.audio_only else ".mp4"
+
     if a.output:
         out = os.path.expanduser(a.output)
         if not os.path.splitext(out)[1]:
-            out += ".mp4"
+            out += ext
     else:
         suffix = ""
         if a.start or a.end:
             suffix = f"_{(a.start or '0')}-{(a.end or 'end')}".replace(":", ".")
-        out = os.path.join(os.path.expanduser(a.outdir), f"{info['file_title']}{suffix}.mp4")
+        out = os.path.join(os.path.expanduser(a.outdir), f"{info['file_title']}{suffix}{ext}")
     workdir = os.path.dirname(out) or "."
     os.makedirs(workdir, exist_ok=True)
     vp = os.path.join(workdir, f"{info['bvid']}_v.m4s")
@@ -197,22 +205,32 @@ def download(info, a):
     # Trim options, applied to each input
     trim = (["-ss", a.start] if a.start else []) + (["-to", a.end] if a.end else [])
 
-    fetch(candidate_urls(info["video"], a.cdn), vp)
-    cmd = ["ffmpeg", "-y", "-loglevel", "error", *trim, "-i", vp]
-    if info["audio"]:
+    cmd = ["ffmpeg", "-y", "-loglevel", "error"]
+    maps, tmp = [], []
+    if want_v:
+        fetch(candidate_urls(info["video"], a.cdn), vp)
+        cmd += [*trim, "-i", vp]
+        maps += ["-map", f"{len(tmp)}:v:0"]
+        tmp.append(vp)
+    if want_a:
         fetch(candidate_urls(info["audio"], a.cdn), apth)
         cmd += [*trim, "-i", apth]
+        maps += ["-map", f"{len(tmp)}:a:0"]
+        tmp.append(apth)
+
     if trim and a.precise:
-        cmd += ["-c:v", "libx264", "-crf", "18", "-preset", "veryfast", "-c:a", "aac"]
+        if want_v:
+            cmd += ["-c:v", "libx264", "-crf", "18", "-preset", "veryfast"]
+        if want_a:
+            cmd += ["-c:a", "aac", "-b:a", "192k"]
     else:
         cmd += ["-c", "copy"]  # no re-encode: fast, cut snaps to keyframes
-    cmd += ["-map", "0:v:0"] + (["-map", "1:a:0"] if info["audio"] else []) + [out]
+    cmd += maps + [out]
 
-    print("Merging...")
+    print("Merging..." if len(tmp) > 1 else "Writing...")
     subprocess.run(cmd, check=True)
-    os.remove(vp)
-    if info["audio"]:
-        os.remove(apth)
+    for f in tmp:
+        os.remove(f)
     print(f"Done: {out}")
 
 
@@ -233,6 +251,9 @@ def main():
     g.add_argument("-o", "--output", help="output file, e.g. clip / ~/Videos/clip.mp4")
     g.add_argument("-d", "--outdir", default=".", help="output folder (when -o is not given)")
     g.add_argument("--precise", action="store_true", help="frame-accurate cut by re-encoding (slow)")
+    x = g.add_mutually_exclusive_group()
+    x.add_argument("--audio-only", action="store_true", help="save audio only (.m4a)")
+    x.add_argument("--video-only", action="store_true", help="save video only, no audio (.mp4)")
     a = ap.parse_args()
 
     info = get_streams(a.url, a.sessdata)
