@@ -32,6 +32,7 @@ Bilibili serves video and audio as separate `.m4s` (DASH) streams. mpv plays the
 | `--dl` | Save as mp4 instead of playing |
 | `-s` / `-e` | Start / end time (`90`, `1:30`, `00:01:30.5`) |
 | `-o` / `-d` | Output file / output folder (`--dl`) |
+| `--audio-only` / `--video-only` | Save audio only (`.m4a`) / video only (`--dl`) |
 | `--precise` | Frame-accurate cut by re-encoding (slow) |
 | `--print` | Print stream URLs only |
 | `--sessdata` | `SESSDATA` login cookie for 1080p+ (or env `BILI_SESSDATA`) |
