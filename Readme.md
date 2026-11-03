@@ -1,6 +1,7 @@
 # bilibili_watcher
 
 Play Bilibili videos directly from the CDN with mpv, or save them as mp4.
+If you want more details, check out my blog https://gloomydog.github.io/blog/bilibili.html
 
 ## Description
 
